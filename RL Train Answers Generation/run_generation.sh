@@ -5,8 +5,8 @@
 # These are used if you don't provide a flag
 # ==========================================
 GPU_ID="1"
-BASE_DIR="/cs/student/project_msc/2025/dsml/rsalgado"
-FAKE_HOME="/cs/student/project_msc/2025/dsml/rsalgado/fake_home"
+BASE_DIR=""
+FAKE_HOME=""
 INPUT_FILE="input_questions.jsonl"
 OUTPUT_FILE="dpo_candidates_output.jsonl"
 
