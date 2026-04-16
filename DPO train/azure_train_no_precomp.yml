@@ -1,0 +1,27 @@
+name: trial_no_precomp_full_grad16_v19
+display_name: trial_no_precomp_full_grad16_v19
+experiment_name: Azure
+command: >-
+  python dpo_train_no_precomp.py 
+  --dataset_file ${{inputs.dataset_file}} 
+  --stats_file ${{inputs.metadata_folder}}/stats.json
+  --output_dir ${{outputs.model_output}}
+  --learning_rate 3e-6
+  --beta 0.1
+  --grad_accum_steps 32
+environment_variables:
+  WANDB_API_KEY: "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"
+inputs:
+  dataset_file:
+    type: uri_file
+    path: azureml:dpo_dataset_fixed:1
+  metadata_folder:
+    type: uri_folder
+    path: azureml:dpo_dataset:1
+outputs:
+  model_output:
+    type: uri_folder
+    mode: rw_mount
+code: .
+environment: azureml://registries/azureml/environments/acpt-pytorch-2.2-cuda12.1/labels/latest
+compute: azureml:A100-gpu-cluster
