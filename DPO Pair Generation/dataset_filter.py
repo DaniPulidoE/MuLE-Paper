@@ -9,11 +9,11 @@ import logging
 import wandb
 from transformers import AutoTokenizer
 
-CANDIDATES_FILE = "./../Data/iter1_questions.jsonl"
+CANDIDATES_FILE = "./Datos/iter1_questions.jsonl"
 N_ANSWERS = 8
-DATASET_FILE = "./../Data/dpo_dataset.jsonl"
-STATS_FILE = "./../Data/stats.json"
-DIFFICULTY_LOG_FILE = "./../Data/difficulty_log.jsonl"
+DATASET_FILE = "./Datos/dpo_dataset.jsonl"
+STATS_FILE = "./Datos/stats.json"
+DIFFICULTY_LOG_FILE = "./Datos/difficulty_log.jsonl"
 MODEL_NAME = "XueZhang-bjtu/1.5B-cold-start-SFT"
 ITERATION_NUMBER = 1
 
