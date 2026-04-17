@@ -1,0 +1,8 @@
+vllm>=0.16.0,<0.18
+transformers>=4.53.0,<5
+datasets>=3.6.0,<5
+math-verify==0.7.0
+langdetect>=1.0.9
+jsonlines>=4.0.0
+numpy>=1.26
+tqdm>=4.67
