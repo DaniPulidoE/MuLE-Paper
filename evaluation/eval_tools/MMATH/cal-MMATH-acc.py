@@ -18,7 +18,7 @@ def normalize_lang_code(code):
     if c.startswith("__label__"):
         c = c[len("__label__"):]
 
-    # Normalize common variants used by different detectors.
+    # Normalize common variants used by different detectors
     if c.startswith("zh"):
         return "zh"
     if c.startswith("pt"):
@@ -46,10 +46,6 @@ class LanguageConsistencyDetector:
                     "Install with: python -m pip install fasttext-wheel"
                 ) from exc
 
-            # NumPy 2.x removed `np.array(..., copy=False)`, which the upstream
-            # fasttext wheel still uses in FastText.predict. Shim np.array inside
-            # fasttext's module namespace so copy=False is translated to copy=None
-            # (numpy 2's "copy only if needed"). Safe for numpy 1.x too.
             try:
                 from fasttext import FastText as _ft_mod  # type: ignore
                 if not getattr(_ft_mod, "_np2_shim_applied", False):
@@ -100,7 +96,7 @@ class LanguageConsistencyDetector:
 
     def _detect_fasttext(self, text, target_lang):
         try:
-            # fasttext.predict rejects any whitespace that tokenizes oddly; flatten all of it.
+            # fasttext.predict rejects any whitespace that tokenizes oddly, flatten all of it
             clean = re.sub(r'\s+', ' ', text).strip()
             if not clean:
                 return False
@@ -318,9 +314,9 @@ for lang in langs:
     }
     for i_cnt in sample_indices:
         # Recompute per-sample metric entries from aggregated counters by
-        # subtracting the running means is not reliable; store direct entries.
-        # Here we reconstruct from the already accumulated totals by re-looping
-        # lightweight source stats for each sample index.
+        # subtracting the running means unreliable. Dtore direct entries.
+        # Reconstruct from the already accumulated totals by re-looping
+        # lightweight source stats for each sample index
         acc_dict = {s: {"num": 0, "acc": 0} for s in sources}
         strict_acc_dict = {s: {"num": 0, "acc&cons": 0} for s in sources}
         think_cons_dict = {s: {"num": 0, "think_cons": 0} for s in sources}

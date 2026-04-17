@@ -220,10 +220,6 @@ class LanguageConsistencyDetector:
                     "Install with: python -m pip install fasttext-wheel"
                 ) from exc
 
-            # NumPy 2.x removed `np.array(..., copy=False)`, which the upstream
-            # fasttext wheel still uses in FastText.predict. Shim np.array inside
-            # fasttext's module namespace so copy=False is translated to copy=None
-            # (numpy 2's "copy only if needed"). Safe for numpy 1.x too.
             try:
                 from fasttext import FastText as _ft_mod  # type: ignore
                 if not getattr(_ft_mod, "_np2_shim_applied", False):
@@ -452,7 +448,7 @@ def evaluation(args):
         "all_lang_cons": all_lang_cons
     }
 
-    ### save results
+    # Save results
     score_file = os.path.join(f"logs-eval/PolyMath-temp_0.9/{model}", "score-eval.jsonl")
     save_f_jsonlines = open(score_file, 'a+', encoding="utf-8")
     save_f_jsonlines.write(json.dumps(res_dict, ensure_ascii=False) + '\n')

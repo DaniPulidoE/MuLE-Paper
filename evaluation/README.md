@@ -1,6 +1,6 @@
 ### Quick Evaluation (Generation + Scoring)
 
-This section provides an explanation for running MMATH and PolyMath eval on `en/es/fr/pt`.
+This section provides an explanation for running MMATH and PolyMath eval on `en/es/fr/pt`, though you can configure other languages too.
 
 ```bash
 # 1) Environment
@@ -47,7 +47,7 @@ python3 eval_tools/MMATH/mmath_eval.py \
   --log_lang_timing
 ```
 
-MMATH generation on validation subset (instead of full benchmark):
+MMATH generation on validation (though can use any other jsonl dataset, can for example replace val_set_mMath.jsonl):
 
 ```bash
 python3 eval_tools/MMATH/mmath_eval.py \

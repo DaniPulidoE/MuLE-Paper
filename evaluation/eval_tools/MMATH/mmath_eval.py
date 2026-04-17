@@ -4,7 +4,7 @@ import os
 import time
 from collections import defaultdict
 
-# Avoid FlashInfer JIT paths that require nvcc on shared cluster runtimes.
+# Avoid FlashInfer JIT paths that require nvcc on shared cluster runtimes
 os.environ.setdefault("VLLM_ATTENTION_BACKEND", "FLASH_ATTN")
 os.environ.setdefault("VLLM_USE_FLASHINFER_SAMPLER", "0")
 os.environ.setdefault("VLLM_DISABLE_FLASHINFER_PREFILL", "1")
