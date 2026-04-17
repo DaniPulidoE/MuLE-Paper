@@ -1,6 +1,6 @@
 ### Quick Evaluation (Generation + Scoring)
 
-This section provides a minimal end-to-end flow for MMATH and PolyMath on `en/es/fr/pt`.
+This section provides an explanation for running MMATH and PolyMath eval on `en/es/fr/pt`.
 
 ```bash
 # 1) Environment
