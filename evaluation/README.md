@@ -200,12 +200,11 @@ export GPU_IDS=0
 ```
 
 
-### Acknowledgement
+### Acknowledgements
 
-We gratefully acknowledge [MMATH](https://github.com/RUCAIBox/MMATH) and [PolyMath](https://github.com/qwenlm/polymath) for their significant contributions to evaluating the multilingual reasoning capabilities of models.
+We acknowledge [MMATH](https://github.com/RUCAIBox/MMATH) and [PolyMath](https://github.com/qwenlm/polymath) for their benchmarks.
 
-### Citation
-If you find this work useful, please consider citing our paper:
+Credit also goes to the original M-Thinker paper and team:
 
 ```
 @misc{zhang2025thinknativelyunlockingmultilingual,
