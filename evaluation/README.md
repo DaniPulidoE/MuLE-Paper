@@ -15,7 +15,7 @@ mkdir -p eval_tools/langid
 curl -L https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz -o eval_tools/langid/lid.176.ftz
 ```
 
-If your checkpoint is a LoRA adapter, merge it first (replace adp name as needed):
+If your checkpoint is a LoRA adapter, merge it first (replace adp name and directory as needed):
 
 ```bash
 python3 -c "from transformers import AutoModelForCausalLM,AutoTokenizer; from peft import PeftModel; import torch; base='XueZhang-bjtu/1.5B-cold-start-SFT'; adp='azure_work/trial_no_precomp_v18'; out='azure_work/merged_trial_no_precomp_v18'; tok=AutoTokenizer.from_pretrained(base,trust_remote_code=True); m=AutoModelForCausalLM.from_pretrained(base,torch_dtype=torch.float16,device_map='auto',trust_remote_code=True); m=PeftModel.from_pretrained(m,adp).merge_and_unload(); m.save_pretrained(out); tok.save_pretrained(out); print('saved',out)"
