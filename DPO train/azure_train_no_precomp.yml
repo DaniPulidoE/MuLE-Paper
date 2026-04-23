@@ -10,7 +10,7 @@ command: >-
   --beta 0.1
   --grad_accum_steps 32
 environment_variables:
-  WANDB_API_KEY: "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"
+  WANDB_API_KEY: ""
 inputs:
   dataset_file:
     type: uri_file
