@@ -20,19 +20,33 @@ LEVELS = ["low", "medium", "high", "top"]
 LANGS = ["en", "es", "fr", "pt"]
 NUM_SAMPLES = 4
 
-# Same backtrack-signal regex used in "RL Train Answers Statistics", so results are comparable.
+# Extends the backtrack-signal regex from "RL Train Answers Statistics" with more phrases per
+# language (incl. Spanish, previously missing) so detection density is comparable across all
+# four scoped languages (en/es/fr/pt) rather than skewed toward whichever has more patterns.
 BACKTRACK_SIGNALS = re.compile(
     r'\bwait\b|\bactually\b|\bno,?\s+wait\b|'
     r'\blet me reconsider\b|\blet me restart\b|'
     r"that'?s wrong\b|\bi made an error\b|"
     r'\blet me try again\b|\bhmm,?\s+actually\b|'
     r'\bhold on\b|\bon second thought\b|'
+    r'\bscratch that\b|\blet me redo (?:this|that)\b|'
+    r'\blet me recheck\b|\blet me double.?check\b|'
+    r"that(?:'s| is) (?:not right|incorrect)\b|"
+    r'\bi need to reconsider\b|\boops\b|\bmy mistake\b|'
+    r'\blet me start over\b|\bupon further (?:thought|reflection)\b|'
     # French
     r'\battends\b|\ben fait\b|\bnon,?\s+attendez\b|'
     r'\bje me suis tromp|\breprenons\b|'
+    r'\boubl(?:ie|iez) ça\b|\blaisse-moi refaire\b|'
+    r"(?:ce n'est pas correct|c'est faux)\b|\bmon erreur\b|"
     # Portuguese
     r'\bespera\b|\bna verdade\b|\bnão,?\s+espera\b|'
-    r'\bcometi um erro\b',
+    r'\bcometi um erro\b|\besquece isso\b|\bdeixa eu refazer\b|'
+    r'\bisso está (?:errado|incorreto)\b|\bmeu erro\b|\bpensando bem\b|'
+    # Spanish
+    r'\bespera\b|\ben realidad\b|\bno,?\s+espera\b|'
+    r'\bcometí un error\b|\beso (?:está mal|es incorrecto)\b|'
+    r'\bun momento\b|\bpensándolo bien\b|\bdéjame reconsiderar\b',
     re.IGNORECASE
 )
 
