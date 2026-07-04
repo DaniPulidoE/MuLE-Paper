@@ -67,6 +67,7 @@ def parse_cli_args():
 # language (incl. Spanish, previously missing) so detection density is comparable across all
 # four scoped languages (en/es/fr/pt) rather than skewed toward whichever has more patterns.
 BACKTRACK_SIGNALS = re.compile(
+    # ============================= ENGLISH =============================
     r'\bwait\b|\bactually\b|\bno,?\s+wait\b|'
     r'\blet me reconsider\b|\blet me restart\b|'
     r"that'?s wrong\b|\bi made an error\b|"
@@ -77,19 +78,59 @@ BACKTRACK_SIGNALS = re.compile(
     r"that(?:'s| is) (?:not right|incorrect)\b|"
     r'\bi need to reconsider\b|\boops\b|\bmy mistake\b|'
     r'\blet me start over\b|\bupon further (?:thought|reflection)\b|'
-    # French
+    r'\bre-?checking\b|\bthere(?:\'s| is) an error\b|'
+    r"\bi(?:'m| am) not sure\b|\bi don't understand\b|"
+    r'\b(?:look for|try) another (?:way|approach)\b|'
+    r'\bno,\s*no\b|'
+    # ---- English additions (surface via code-switching) ----
+    r'\bhmm+\b|\bcorrection\b|\bmiscalculat(?:ed|ion)\b|'
+    r"\bsomething(?:'s| is) wrong\b|\bdouble.?check\b|\brecheck\b|\bredo\b|"
+    r'\bre-?(?:examine|calculate|compute|evaluate|verify|consider)\b|'
+    r"\bthat can(?:no|')t be\b|"
+    # ============================= FRENCH ==============================
     r'\battends\b|\ben fait\b|\bnon,?\s+attendez\b|'
     r'\bje me suis tromp|\breprenons\b|'
     r'\boubl(?:ie|iez) ça\b|\blaisse-moi refaire\b|'
     r"(?:ce n'est pas correct|c'est faux)\b|\bmon erreur\b|"
-    # Portuguese
+    r"\bl'erreur (?:est|était) dans\b|"
+    r"\bil y a une erreur\b|\bnon,\s*non\b|"
+    r"\b(?:chercher|essayer) une autre (?:façon|méthode)\b|"
+    r"\bje ne comprends pas\b|\bje ne suis pas s[ûu]r\b|"
+    # ---- French additions ----
+    r'\bje dois (?:vérifier|revoir|recalculer|reconsidérer)\b|'
+    r"\bc'est incorrect\b|\bce n'est pas (?:possible|juste|bon)\b|\bça ne peut pas\b|"
+    r'\berreur dans\b|\ben réalité\b|\bje me trompe\b|\bje ne suis pas certain\b|'
+    r"\bj'ai fait une erreur\b|"
+    r'\b(?:vérifions|revérifions|recalculons|reconsidérons|recommençons|refaisons)\b|'
+    r'\bun (?:moment|instant)\b|'
+    # =========================== PORTUGUESE ============================
     r'\bespera\b|\bna verdade\b|\bnão,?\s+espera\b|'
     r'\bcometi um erro\b|\besquece isso\b|\bdeixa eu refazer\b|'
     r'\bisso está (?:errado|incorreto)\b|\bmeu erro\b|\bpensando bem\b|'
-    # Spanish
+    r'\bo erro (?:está|estava) em\b|'
+    r'\bhá um erro\b|\bnão,\s*não\b|'
+    r'\b(?:procurar|tentar) outra forma\b|'
+    r'\bnão entendo\b|\bnão tenho certeza\b|'
+    # ---- Portuguese additions ----
+    r'\bde fato\b|\bnão pode ser\b|\bnão está (?:certo|correto)\b|\bestá errado\b|'
+    r'\balgo está errado\b|\berro em\b|'
+    r'\bvamos (?:verificar|revisar|recalcular|reconsiderar|conferir)\b|'
+    r'\bpreciso (?:revisar|verificar|recalcular)\b|\bcorrig(?:ir|ido)\b|'
+    r'\besper[ae]m\b|\bum (?:momento|segundo|instante)\b|'
+    # ============================= SPANISH =============================
     r'\bespera\b|\ben realidad\b|\bno,?\s+espera\b|'
     r'\bcometí un error\b|\beso (?:está mal|es incorrecto)\b|'
-    r'\bun momento\b|\bpensándolo bien\b|\bdéjame reconsiderar\b',
+    r'\bun momento\b|\bpensándolo bien\b|\bdéjame reconsiderar\b|'
+    r'\bel error (?:está|estaba) en\b|'
+    r'\bhay (?:un|una) error\b|'
+    r'\b(?:buscar|intentar) otra manera\b|'
+    r'\bno entiendo\b|\bno estoy segur[oa]\b|'
+    # ---- Spanish additions ----
+    r'\bde hecho\b|\bno es correcto\b|\bno puede ser\b|\balgo (?:está|anda) mal\b|'
+    r'\b(?:esto|eso) no está bien\b|\berror en\b|\bme equivoqu[ée]\b|'
+    r'\bdebo (?:revisar|verificar|recalcular)\b|'
+    r'\b(?:verifiquemos|revisemos|comprobemos|recalculemos|reconsideremos)\b|'
+    r'\bre-?(?:examinar|considerar)\b|\besper[ae]n\b',
     re.IGNORECASE
 )
 
