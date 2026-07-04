@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from transformers import AutoTokenizer
 
-from polymath_data import MODEL_NAME, LEVELS, LANGDETECT_AVAILABLE, load_records
+from polymath_data import LANGDETECT_AVAILABLE, load_records, parse_cli_args
 
 
 def print_stats_helper(df_subset, column, label, is_binary=False):
@@ -40,21 +40,24 @@ def main():
         print("Please install langdetect first: pip install langdetect")
         return
 
+    args = parse_cli_args()
+    print(f"Model: {args.model_name}  |  Tokenizer: {args.tokenizer}  |  Results dir: {args.results_dir}")
+
     print("Loading Tokenizer...")
     try:
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     except Exception as e:
         print(f"Error loading tokenizer: {e}")
         return
 
     print("Reading PolyMath generations and calculating all scores (Acc, LC, Backtracks, Length, Format)...")
-    records = load_records(tokenizer=tokenizer)
+    records = load_records(results_dir=args.results_dir, levels=args.levels, langs=args.langs, tokenizer=tokenizer)
     if not records:
         print("No valid data found.")
         return
 
     df = pd.DataFrame(records)
-    df["Level"] = pd.Categorical(df["Level"], categories=LEVELS, ordered=True)
+    df["Level"] = pd.Categorical(df["Level"], categories=args.levels, ordered=True)
     df["Accuracy Label"] = df["Accuracy"].map({0.0: "Incorrect (Acc=0)", 1.0: "Correct (Acc=1)"})
 
     df_acc0 = df[df["Accuracy"] == 0.0]

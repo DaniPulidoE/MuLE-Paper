@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import re
@@ -14,11 +15,53 @@ try:
 except ImportError:
     LANGDETECT_AVAILABLE = False
 
+# Defaults, used when the scripts are run with no CLI args at all.
 MODEL_NAME = "XueZhang-bjtu/1.5B-cold-start-SFT"
 RESULTS_DIR = "../evaluation/logs-eval/PolyMath-temp_0.9/1.5B-cold-start-SFT"
 LEVELS = ["low", "medium", "high", "top"]
 LANGS = ["en", "es", "fr", "pt"]
 NUM_SAMPLES = 4
+
+# All model result directories live under here, one subfolder per --model_name
+# (e.g. "1.5B-cold-start-SFT", "MTHINKER", "MULE" — matches whatever --model_name
+# was passed to polymath_res_gen.py during generation).
+BASE_RESULTS_DIR_TEMPLATE = "../evaluation/logs-eval/PolyMath-temp_{temp}"
+
+
+def parse_cli_args():
+    """Common CLI args for Total_answers_stats.py / Per_question_stats.py, so you can point
+    at any generated model's results without editing this file."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model_name", default=None,
+        help="Directory label under logs-eval/PolyMath-temp_<temp>/ to analyze, e.g. "
+             "'1.5B-cold-start-SFT', 'MTHINKER', 'MULE'. Defaults to the SFT model.",
+    )
+    parser.add_argument(
+        "--tokenizer", default=None,
+        help="HF repo id or local path for the tokenizer used to count tokens. "
+             "--model_name labels like 'MTHINKER'/'MULE' aren't valid HF ids themselves, so "
+             "this defaults to the base SFT model's tokenizer, which is safe for LoRA/DPO "
+             "checkpoints sharing the same vocab.",
+    )
+    parser.add_argument(
+        "--results_dir", default=None,
+        help="Explicit override for the results directory; if omitted, derived from "
+             "--model_name and --temp.",
+    )
+    parser.add_argument("--temp", type=float, default=0.9)
+    parser.add_argument("--levels", nargs="+", default=None)
+    parser.add_argument("--langs", nargs="+", default=None)
+    args = parser.parse_args()
+
+    args.model_name = args.model_name or MODEL_NAME.split("/")[-1]
+    args.tokenizer = args.tokenizer or MODEL_NAME
+    args.results_dir = args.results_dir or os.path.join(
+        BASE_RESULTS_DIR_TEMPLATE.format(temp=args.temp), args.model_name
+    )
+    args.levels = args.levels or LEVELS
+    args.langs = args.langs or LANGS
+    return args
 
 # Extends the backtrack-signal regex from "RL Train Answers Statistics" with more phrases per
 # language (incl. Spanish, previously missing) so detection density is comparable across all

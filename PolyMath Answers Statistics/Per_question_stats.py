@@ -4,25 +4,28 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from transformers import AutoTokenizer
 
-from polymath_data import MODEL_NAME, LEVELS, NUM_SAMPLES, load_records
+from polymath_data import NUM_SAMPLES, load_records, parse_cli_args
 
 
 def main():
+    args = parse_cli_args()
+    print(f"Model: {args.model_name}  |  Tokenizer: {args.tokenizer}  |  Results dir: {args.results_dir}")
+
     print("Loading Tokenizer...")
     try:
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     except Exception as e:
         print(f"Error loading tokenizer: {e}")
         return
 
     print("Reading PolyMath generations and processing metrics per question difficulty...")
-    records = load_records(tokenizer=tokenizer)
+    records = load_records(results_dir=args.results_dir, levels=args.levels, langs=args.langs, tokenizer=tokenizer)
     if not records:
         print("No valid data found.")
         return
 
     df = pd.DataFrame(records)
-    df["Level"] = pd.Categorical(df["Level"], categories=LEVELS, ordered=True)
+    df["Level"] = pd.Categorical(df["Level"], categories=args.levels, ordered=True)
 
     # One row per unique question, for the distribution plot.
     df_questions = df.drop_duplicates(subset=["Level", "Language", "Question ID"])[
@@ -34,7 +37,7 @@ def main():
     print("   AVERAGE METRICS BY QUESTION SCORE, PER DIFFICULTY LEVEL")
     print("="*60)
 
-    for level in LEVELS:
+    for level in args.levels:
         print(f"\n--- {level.upper()} ---")
         df_level = df[df["Level"] == level]
         grouped = df_level.groupby("Question Correct Count")
