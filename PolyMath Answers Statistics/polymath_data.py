@@ -82,11 +82,24 @@ BACKTRACK_SIGNALS = re.compile(
     r"\bi(?:'m| am) not sure\b|\bi don't understand\b|"
     r'\b(?:look for|try) another (?:way|approach)\b|'
     r'\bno,\s*no\b|'
-    # ---- English additions (surface via code-switching) ----
     r'\bhmm+\b|\bcorrection\b|\bmiscalculat(?:ed|ion)\b|'
     r"\bsomething(?:'s| is) wrong\b|\bdouble.?check\b|\brecheck\b|\bredo\b|"
     r'\bre-?(?:examine|calculate|compute|evaluate|verify|consider)\b|'
     r"\bthat can(?:no|')t be\b|"
+    # ---- English additions (round 2) ----
+    r'\balternatively\b|\bwrong\b|\bincorrect\b|\bnot sure\b|\bunsure\b|'
+    r'\bnot (?:right|correct|quite)\b|\bcontradict(?:ion|s|ory)\b|'
+    r'\binconsisten(?:t|cy)\b|\bconfusing\b|\bnope\b|\bnah\b|'
+    r'\b(?:think again|rethink)\b|\bgo(?:ing)? back\b|\bback up\b|'
+    r"\bthat doesn(?:'t| not) (?:seem|look|make)\b|"
+    r"\bdoesn'?t make sense\b|\bmakes no sense\b|"
+    r"\bthat(?:'s| is) (?:odd|strange|weird)\b|"
+    r'\bi confused\b|\bi mixed up\b|\bmisread\b|\bmisunderst(?:ood|and)\b|'
+    r'\bi think i (?:made|did|got)\b|\b(?:i|that) was wrong\b|\bthis is wrong\b|'
+    r'\blet me fix\b|\bfix(?:ed|ing)? (?:this|that|it)\b|\bnever mind\b|'
+    r'\blet me (?:verify|check|confirm|re-?examine|recalculate|recompute)\b|'
+    r'\bre-?(?:examin|evaluat|calculat|comput|verif|consider|check|read)\w*\b|'
+    r'\bre-?do\b|'
     # ============================= FRENCH ==============================
     r'\battends\b|\ben fait\b|\bnon,?\s+attendez\b|'
     r'\bje me suis tromp|\breprenons\b|'
@@ -96,14 +109,19 @@ BACKTRACK_SIGNALS = re.compile(
     r"\bil y a une erreur\b|\bnon,\s*non\b|"
     r"\b(?:chercher|essayer) une autre (?:façon|méthode)\b|"
     r"\bje ne comprends pas\b|\bje ne suis pas s[ûu]r\b|"
-    # ---- French additions ----
     r'\bje dois (?:vérifier|revoir|recalculer|reconsidérer)\b|'
     r"\bc'est incorrect\b|\bce n'est pas (?:possible|juste|bon)\b|\bça ne peut pas\b|"
     r'\berreur dans\b|\ben réalité\b|\bje me trompe\b|\bje ne suis pas certain\b|'
     r"\bj'ai fait une erreur\b|"
     r'\b(?:vérifions|revérifions|recalculons|reconsidérons|recommençons|refaisons)\b|'
     r'\bun (?:moment|instant)\b|'
-    # =========================== PORTUGUESE ============================
+    # ---- French additions (round 2) ----
+    r'\balternativement\b|\brefaire\b|\bje refais\b|\bje revois\b|\brecommencer\b|'
+    r'\brevenons\b|\bje doute\b|\bje me suis planté\b|'
+    r"\bj(?:e|')ai tort\b|\bça n(?:e|')a pas de sens\b|\bn(?:e|')a aucun sens\b|"
+    r'\bça ne colle pas\b|\bça ne correspond pas\b|'
+    r"\bc(?:e|')est (?:bizarre|étrange)\b|"
+    # ============================= PORTUGUESE =========================
     r'\bespera\b|\bna verdade\b|\bnão,?\s+espera\b|'
     r'\bcometi um erro\b|\besquece isso\b|\bdeixa eu refazer\b|'
     r'\bisso está (?:errado|incorreto)\b|\bmeu erro\b|\bpensando bem\b|'
@@ -111,13 +129,17 @@ BACKTRACK_SIGNALS = re.compile(
     r'\bhá um erro\b|\bnão,\s*não\b|'
     r'\b(?:procurar|tentar) outra forma\b|'
     r'\bnão entendo\b|\bnão tenho certeza\b|'
-    # ---- Portuguese additions ----
     r'\bde fato\b|\bnão pode ser\b|\bnão está (?:certo|correto)\b|\bestá errado\b|'
     r'\balgo está errado\b|\berro em\b|'
     r'\bvamos (?:verificar|revisar|recalcular|reconsiderar|conferir)\b|'
     r'\bpreciso (?:revisar|verificar|recalcular)\b|\bcorrig(?:ir|ido)\b|'
     r'\besper[ae]m\b|\bum (?:momento|segundo|instante)\b|'
-    # ============================= SPANISH =============================
+    # ---- Portuguese additions (round 2) ----
+    r'\balternativamente\b|\bme enganei\b|\benganei-me\b|\beu errei\b|\berrei\b|'
+    r'\bfiz errado\b|\brefazer\b|\brefaço\b|\brevendo\b|\brevisando\b|\bopa\b|'
+    r'\bnão faz sentido\b|\bnão (?:bate|fecha|confere|condiz|corresponde)\b|'
+    r'\bnão estou convencido\b|'
+    # ============================= SPANISH ============================
     r'\bespera\b|\ben realidad\b|\bno,?\s+espera\b|'
     r'\bcometí un error\b|\beso (?:está mal|es incorrecto)\b|'
     r'\bun momento\b|\bpensándolo bien\b|\bdéjame reconsiderar\b|'
@@ -125,12 +147,15 @@ BACKTRACK_SIGNALS = re.compile(
     r'\bhay (?:un|una) error\b|'
     r'\b(?:buscar|intentar) otra manera\b|'
     r'\bno entiendo\b|\bno estoy segur[oa]\b|'
-    # ---- Spanish additions ----
     r'\bde hecho\b|\bno es correcto\b|\bno puede ser\b|\balgo (?:está|anda) mal\b|'
     r'\b(?:esto|eso) no está bien\b|\berror en\b|\bme equivoqu[ée]\b|'
     r'\bdebo (?:revisar|verificar|recalcular)\b|'
     r'\b(?:verifiquemos|revisemos|comprobemos|recalculemos|reconsideremos)\b|'
-    r'\bre-?(?:examinar|considerar)\b|\besper[ae]n\b',
+    r'\bre-?(?:examinar|considerar)\b|\besper[ae]n\b|'
+    # ---- Spanish additions (round 2) ----
+    r'\balternativamente\b|\bincorrecto\b|\b(?:está |estar )?equivocad[oa]\b|'
+    r'\bme he equivocado\b|\brevisando\b|\bhice mal\b|\bhay algo mal\b|'
+    r'\bno (?:tiene sentido|coincide|cuadra|concuerda)\b',
     re.IGNORECASE
 )
 
