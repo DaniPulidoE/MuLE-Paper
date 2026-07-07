@@ -219,7 +219,8 @@ def main(args):
         lr_scheduler_type="cosine",
         warmup_steps=24,
         beta=args.beta,
-        loss_type="sigmoid",
+        loss_type=["sigmoid", "sft"],   # DPO + NLL-on-chosen (Iterative RPO)
+        loss_weights=[1.0, 1.0],        # recommended alpha = 1.0
         max_length=max_length,
         truncation_mode="keep_end",
         precompute_ref_log_probs=precompute_ref_log_probs,

@@ -155,7 +155,18 @@ BACKTRACK_SIGNALS = re.compile(
     # ---- Spanish additions (round 2) ----
     r'\balternativamente\b|\bincorrecto\b|\b(?:está |estar )?equivocad[oa]\b|'
     r'\bme he equivocado\b|\brevisando\b|\bhice mal\b|\bhay algo mal\b|'
-    r'\bno (?:tiene sentido|coincide|cuadra|concuerda)\b',
+    r'\bno (?:tiene sentido|coincide|cuadra|concuerda)\b|'
+    # ======== round 3: data-mined from iter1_questions.jsonl ========
+    # English (let's-see family: 29k/23k/12k hits missed by rounds 1-2)
+    r"\blet'?s (?:see|check|verify|double.?check)\b|\blet me see\b|"
+    r'\bi must have (?:made|mis)\w*\b|\bsanity check\b|\bseems off\b|\bam i missing\b|'
+    # French (vérifie/je vérifie: 38k combined hits, the largest gap found)
+    r'\bvérifie\b|\bmais non\b|\bvoyons\b|\bpardon\b|\bnon\s+non\b|'
+    # Portuguese
+    r'\bverificando\b|\bvou (?:verificar|checar|refazer)\b|\bvamos ver\b|'
+    r'\bvejamos\b|\bcalma\b|\bops\b|\beita\b|\bespere\b|\bestranho\b|\bnão\s+não\b|'
+    # Spanish (untested analogues of the mined fr/pt cues - no es data in iter1)
+    r'\bveamos\b|\bvamos a ver\b|\bverifico\b|\bverificando\b',
     re.IGNORECASE
 )
 
