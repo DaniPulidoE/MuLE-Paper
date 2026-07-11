@@ -243,6 +243,7 @@ def main(args):
         save_steps=1,
         save_total_limit=2,
         max_grad_norm=2.0,
+        use_logits_to_keep=True,
     )
 
     trainer = DPOTrainer(

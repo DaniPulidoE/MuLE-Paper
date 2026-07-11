@@ -17,7 +17,32 @@ DIFFICULTY_LOG_FILE = "./Datos/difficulty_log.jsonl"
 MODEL_NAME = "XueZhang-bjtu/1.5B-cold-start-SFT"
 ITERATION_NUMBER = 1
 
-WEIGHT_BACKTRACK = 2
+# D2 chosen-ranking weights: rep/uniq replace the old backtrack penalty (D1).
+# bt(a) stays computed and logged as a diagnostic but never influences selection.
+LAMBDA_REP = 0.3    # rep in [0,1], scaled x100 to be commensurate with chrF align [0,100]
+MU_UNIQ = 1.0       # distinct 10-grams / 1000; a clean 8k-word answer earns ~8 points
+REP_NGRAM = 10      # n-gram order for rep/uniq; keep identical everywhere
+
+# D3 anti-looping pairs (thresholds calibrated on PolyMath high tier;
+# M-Thinker in-language rep ~0.055, SFT/MuLE looping ~0.18-0.24)
+POOL_A_REP_MAX = 0.08    # chosen side: clean progress
+POOL_B_REP_MIN = 0.15    # rejected side: in-language answers that looped and failed
+ANTILOOP_LEN_TOL = 0.25  # max relative length mismatch within a pair
+
+# D4 census: "long" chosen candidates, in words (~4k tokens at ~1.3 tok/word)
+CENSUS_MIN_WORDS = 3000
+CENSUS_MIN_CELL = 50     # below this a (lang, difficulty) cell is flagged, not fabricated
+
+# Hard ceiling on rep for chosen ELIGIBILITY (not just ranking): with the RPO
+# anchor, a looping chosen is actively imitated, so a sole-correct-answer
+# question must not promote a degenerate trace. Well above the correct-answer
+# mean (~0.04-0.06) so it only removes genuine loops; costs only yield.
+CHOSEN_REP_MAX = 0.15
+
+# Trainer sequence cap (dpo_train_no_precomp.py --max_length). Pairs longer
+# than this are front-truncated by truncation_mode="keep_end" (the PROMPT is
+# amputated), so the filter counts them instead of discovering it in training.
+TRAIN_MAX_LENGTH = 16384
 
 # Prompt templates per language — same as generate_dpo_data.py
 LANG_TO_INSTRUCTIONS = {
@@ -172,6 +197,26 @@ def _strip_math(text):
         cleaned = re.sub(r'<[^>\n]{1,200}>', ' ', cleaned)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         return cleaned
+
+_THINK_TAGS = re.compile(r"</?think>")
+
+def rep_uniq(text, n=REP_NGRAM):
+    """(rep, uniq, n_words) for one answer — spec §2-3.
+
+    rep: fraction of word n-grams that duplicate an earlier n-gram in the same
+    answer; language-neutral by construction (no word lists, no language ID).
+    uniq: distinct n-grams / 1000 — novel content mass, offline chosen ranking
+    ONLY (a policy can hack it online by padding with novel filler).
+    Computed on the full text (thinking + final answer) with the <think> tags
+    stripped; LaTeX is kept — repeated equation blocks are real loops.
+    """
+    words = _THINK_TAGS.sub(" ", text).split()
+    total = len(words) - n
+    if total <= 0:
+        return 0.0, 0.0, len(words)
+    grams = [tuple(words[i:i + n]) for i in range(total)]
+    distinct = len(set(grams))
+    return 1.0 - distinct / len(grams), distinct / 1000.0, len(words)
 
 def _windows(text):
     if len(text) <= WINDOW_SIZE:
@@ -496,6 +541,8 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
     chrF_alignment = dict()
     ids_with_pairs = set()
     all_answers = dict()
+    rep_by_lang = {"en": [], "fr": [], "pt": []}       # per-answer rep, for stats
+    chosen_rep_by_lang = {"en": [], "fr": [], "pt": []}  # rep of chosen-eligible answers
 
     # list to store the pairs for DPO
     dpo_pairs = []
@@ -515,6 +562,7 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
         "rejected_incorrect": 0, # rejected questions
         "excluded_correct_ambiguous_lang": 0, # correct answers with ambiguous language - never trained on
         "excluded_correct_bad_format": 0, # correct in-language answers with broken format - never trained on
+        "excluded_correct_high_rep": 0, # correct in-language answers that loop (rep >= CHOSEN_REP_MAX) - never trained on
         "lc_consistent": 0, # answers confidently in the expected language
         "lc_inconsistent": 0, # answers confidently in another language
         "lc_ambiguous": 0, # answers the detector could not label confidently
@@ -528,11 +576,20 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
     # realized pair-type mixture per language, keyed by the rejected side:
     # acc_contrast (wrong, in-language), lc_contrast (correct, off-language), other
     for _lang in langs:
-        for _ptype in ("acc_contrast", "lc_contrast", "other"):
+        for _ptype in ("acc_contrast", "lc_contrast", "other", "antiloop"):
             stats[f"pairs_{_lang}_{_ptype}"] = 0
+    # D3: (q, lang) combos where both anti-loop pools existed but no pairing
+    # satisfied the +-25% length-match constraint
+    stats["antiloop_skipped_length_mismatch"] = 0
+    # pairs whose prompt+completion exceeds the trainer cap (keep_end would
+    # amputate the prompt at training time)
+    stats["pairs_over_cap_chosen"] = 0
+    stats["pairs_over_cap_rejected"] = 0
+    stats["pairs_over_cap_any"] = 0
 
     print("Calculating answer scores...")
     for c_i in range(0, len(candidates), 3):
+        print(f"Processing question {c_i//3 + 1}/{len(candidates)//3} (index {c_i})")
         # get answers for three languages
         if len(candidates) <= c_i + 2:
             continue
@@ -605,20 +662,30 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
                 fmt = format_reward(answer)
                 scores_lang[num_id][j]["format"] = fmt
                 
-                # get backtrack count
+                # get backtrack count (diagnostic only — never scores, never
+                # compared across languages: it measures code-switched English)
                 scores_lang[num_id][j]["bt"] = len(BACKTRACK_SIGNALS.findall(answer))
-                
+
+                # repetition metrics (spec §2-3): duplicate 10-gram rate,
+                # novel content mass, and word count (D4 census)
+                rep_val, uniq_val, n_words = rep_uniq(answer)
+                scores_lang[num_id][j]["rep"] = rep_val
+                scores_lang[num_id][j]["uniq"] = uniq_val
+                scores_lang[num_id][j]["n_words"] = n_words
+                rep_by_lang[lang].append(rep_val)
+
                 if acc == 1:
                     acc_rate[num_id][lang] += 1
-                    if lc == 1 and fmt == 1:
+                    if lc == 1 and fmt == 1 and rep_val < CHOSEN_REP_MAX:
                         # correct_rate counts chosen-eligible answers only, so
                         # pivot selection / consensus / get_k stay consistent
-                        # with the chosen pool (acc, lc AND format)
+                        # with the chosen pool (acc, lc, format AND rep cap)
                         correct_rate[num_id][lang] += 1
     
     # iterate through questions to calculate pivot and pairwise scores     
     print("Selecting correct and incorrect answers")  
     for id in en_scores:      
+        print(f"Processing question {id}")
         # total consensus score for the question (combining three languages)
         total_consensus[id] = sum([correct_rate[id][lang] for lang in langs])/n_answers_total
         
@@ -652,11 +719,21 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
             for i in range(n_answers):
                 # scores for that answer
                 answer_scores = scores[lang][id][i]
-                if answer_scores["acc"] == 1 and answer_scores["lc"] == 1 and answer_scores["format"] == 1:
-                    # correct, in-language and eval-scoreable format
-                    # (costs ~2% of correct answers - see format_stats.py)
+                if (answer_scores["acc"] == 1 and answer_scores["lc"] == 1
+                        and answer_scores["format"] == 1
+                        and answer_scores["rep"] < CHOSEN_REP_MAX):
+                    # correct, in-language, eval-scoreable format, not looping
+                    # (format costs ~2% of correct answers - see format_stats.py)
                     chosen_candidates[lang][id].append(i)
                     stats["chosen_correct"] += 1
+                    chosen_rep_by_lang[lang].append(answer_scores["rep"])
+                elif (answer_scores["acc"] == 1 and answer_scores["lc"] == 1
+                        and answer_scores["format"] == 1):
+                    # correct, in-language, scoreable — but a degenerate loop:
+                    # the RPO anchor would IMITATE it (a rank penalty cannot
+                    # save a sole-correct-answer question). Don't imitate it,
+                    # don't push it down (it is still correct reasoning).
+                    stats["excluded_correct_high_rep"] += 1
                 elif answer_scores["acc"] == 1 and answer_scores["lc"] == 1:
                     # correct and in-language but broken format: don't imitate it,
                     # don't push it down
@@ -742,10 +819,26 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
             else:
                 return "easy"       # mostly correct — weak DPO signal
 
+    # D4 census: per (lang, difficulty), how many answers are eligible anti-loop
+    # chosen candidates (acc & lc & format, clean rep, long). Cells below
+    # CENSUS_MIN_CELL are recorded as a shortfall, never fabricated — the
+    # shortfall itself bounds what offline DPO can achieve there.
+    census = {lang: {"too_hard": 0, "hard": 0, "medium": 0, "easy": 0}
+              for lang in langs}
+
     for id in en_scores:
         # skip questions that were skipped in scoring
         if id not in total_consensus:
-            continue        
+            continue
+
+        tier = _difficulty_label(total_consensus[id])
+        for lang in langs:
+            for j in range(n_answers):
+                s = scores[lang][id][j]
+                if (s["acc"] == 1 and s["lc"] == 1 and s["format"] == 1
+                        and s["rep"] < POOL_A_REP_MAX
+                        and s["n_words"] > CENSUS_MIN_WORDS):
+                    census[lang][tier] += 1
 
         entry = {
             "num_id": id,
@@ -764,6 +857,11 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
             "acc_rate_en": round(acc_rate[id]["en"] / n_answers, 4),
             "acc_rate_fr": round(acc_rate[id]["fr"] / n_answers, 4),
             "acc_rate_pt": round(acc_rate[id]["pt"] / n_answers, 4),
+
+            # per-language mean 10-gram repetition rate over the n answers
+            "rep_mean_en": round(mean(scores["en"][id][j]["rep"] for j in range(n_answers)), 4),
+            "rep_mean_fr": round(mean(scores["fr"][id][j]["rep"] for j in range(n_answers)), 4),
+            "rep_mean_pt": round(mean(scores["pt"][id][j]["rep"] for j in range(n_answers)), 4),
 
             # which language was strongest for this question
             "pivot_lang": pivot_langs[id],
@@ -786,8 +884,6 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
                 # no answer for that question in that language - dataset error
                 continue
 
-            question_scores = scores[lang][id]
-
             if id not in total_consensus or total_consensus[id] == 0:
                 # no correct answers for that question
                 continue
@@ -796,52 +892,20 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
                 # no correct or incorrect answers - useless for training
                 continue
             
-            if lang not in chrF_alignment[id]:
-                # pivot language when no other languages found a correct answer
-                continue
-                
-            # dynamically select number of pairs to generate per question and language
-            k = get_k(correct_rate[id][lang], total_consensus[id], n_answers)
+            question_scores = scores[lang][id]
             
-            # sort chosen candidates by chrF alignment score descending
-            def candidate_score(c_id):
-                chrf_val = chrF_alignment[id][lang][c_id]
-                # penalize answers with more baacktracking
-                bt_count = question_scores[c_id]["bt"]
-                # (format is a hard requirement for chosen now, so no format term)
-                return chrf_val #- WEIGHT_BACKTRACK * bt_count
-
-            sorted_chosen = sorted(
-                chrF_alignment[id][lang].keys(),
-                key=candidate_score,
-                reverse=True
-            )
-                
-            # take top k, but don't exceed available candidates
-            top_k_chosen = sorted_chosen[:min(k, len(sorted_chosen))]
-                
-            # rejected candidates
+            # rejected candidate pools (shared by both pair types)
             rejected_cands = rejected_candidates[lang][id]
             # answers with wrong result but correct language consistency
-            rejected_wrong_ans = [i for i in rejected_cands if question_scores[i]["acc"]==0 and question_scores[i]["lc"]==1] 
+            rejected_wrong_ans = [i for i in rejected_cands if question_scores[i]["acc"]==0 and question_scores[i]["lc"]==1]
             # answers with correct result but incorrect language consistency
-            rejected_inconsistent_ans = [i for i in rejected_cands if question_scores[i]["acc"]==1 and question_scores[i]["lc"]==0] 
+            rejected_inconsistent_ans = [i for i in rejected_cands if question_scores[i]["acc"]==1 and question_scores[i]["lc"]==0]
             # other rejected ones (wrong answer with inconsistent or ambiguous language)
             other_rejected =  [i for i in rejected_cands if question_scores[i]["acc"]==0 and question_scores[i]["lc"]!=1]
-                
-            # rejected answers (quota-mixed, length-matched lc picks)
-            rejected_selected = select_rejected_mixed(
-                lang,
-                rejected_wrong_ans,
-                rejected_inconsistent_ans,
-                other_rejected,
-                k,
-                top_k_chosen,
-                candidate["candidates"]
-            )
-                
-            for chosen, rejected in zip(top_k_chosen, rejected_selected):
-                # construct pairs
+
+            emitted = set()  # (chosen, rejected) index pairs written for this (q, lang)
+
+            def emit_pair(chosen, rejected, ptype):
                 # prompt
                 prompt_text = LANG_TO_INSTRUCTIONS[lang].format(question=candidate["question"])
                 messages = [{"role": "user", "content": prompt_text}]
@@ -851,7 +915,7 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
                     add_generation_prompt=True,
                     enable_thinking=True,
                 )
-                
+
                 # drop the completion's leading <think> only when the templated
                 # prompt already ends with one (see _dedup_leading_think)
                 pair_dict = {
@@ -859,21 +923,97 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
                     "chosen": _dedup_leading_think(prompt_formatted, candidate["candidates"][chosen]),
                     "rejected": _dedup_leading_think(prompt_formatted, candidate["candidates"][rejected])
                 }
-                # log the realized pair type (mixture monitoring)
-                r_scores = question_scores[rejected]
-                if r_scores["acc"] == 0 and r_scores["lc"] == 1:
-                    stats[f"pairs_{lang}_acc_contrast"] += 1
-                elif r_scores["acc"] == 1 and r_scores["lc"] == 0:
-                    stats[f"pairs_{lang}_lc_contrast"] += 1
-                else:
-                    stats[f"pairs_{lang}_other"] += 1
+                # over-cap monitor: with truncation_mode="keep_end", a pair
+                # longer than the trainer cap trains on an amputated prompt.
+                # Counted here so the problem is visible before training.
+                over_any = False
+                for side in ("chosen", "rejected"):
+                    n_tok = len(tokenizer(prompt_formatted + pair_dict[side]).input_ids)
+                    if n_tok > TRAIN_MAX_LENGTH:
+                        stats[f"pairs_over_cap_{side}"] += 1
+                        over_any = True
+                if over_any:
+                    stats["pairs_over_cap_any"] += 1
 
+                # log the realized pair type (mixture monitoring)
+                stats[f"pairs_{lang}_{ptype}"] += 1
                 dpo_pairs.append(pair_dict)
                 ids_with_pairs.add(id)
+                emitted.add((chosen, rejected))
                 stats["pairs_created"] += 1
                 f.write(json.dumps(pair_dict, ensure_ascii=False) + "\n")
 
-            stats["question_lang_with_pairs"] += 1
+            # ---- pair type 1: quota-mixed acc/lc-contrast pairs (needs chrF pivot) ----
+            if lang in chrF_alignment[id]:
+                # dynamically select number of pairs to generate per question and language
+                k = get_k(correct_rate[id][lang], total_consensus[id], n_answers)
+
+                # D2 chosen ranking: alignment, minus verbatim recycling, plus
+                # novel content mass — prefers "reasoned long and productively"
+                # over both "short lucky hit" and "long loop". No backtrack term
+                # (D1: bt ~ 0 on every lc==1 candidate, so it was blind exactly
+                # where it applied; kept as a logged diagnostic only). No format
+                # term: format is a hard gate for chosen, constant 1 here.
+                def candidate_score(c_id):
+                    s = question_scores[c_id]
+                    return (chrF_alignment[id][lang][c_id]
+                            - LAMBDA_REP * 100 * s["rep"]
+                            + MU_UNIQ * s["uniq"])
+
+                sorted_chosen = sorted(
+                    chrF_alignment[id][lang].keys(),
+                    key=candidate_score,
+                    reverse=True
+                )
+
+                # take top k, but don't exceed available candidates
+                top_k_chosen = sorted_chosen[:min(k, len(sorted_chosen))]
+
+                # rejected answers (quota-mixed, length-matched lc picks)
+                rejected_selected = select_rejected_mixed(
+                    lang,
+                    rejected_wrong_ans,
+                    rejected_inconsistent_ans,
+                    other_rejected,
+                    k,
+                    top_k_chosen,
+                    candidate["candidates"]
+                )
+
+                for chosen, rejected in zip(top_k_chosen, rejected_selected):
+                    r_scores = question_scores[rejected]
+                    if r_scores["acc"] == 0 and r_scores["lc"] == 1:
+                        ptype = "acc_contrast"
+                    elif r_scores["acc"] == 1 and r_scores["lc"] == 0:
+                        ptype = "lc_contrast"
+                    else:
+                        ptype = "other"
+                    emit_pair(chosen, rejected, ptype)
+
+            # ---- pair type 2 (D3): length-matched anti-looping pair, at most 1 ----
+            # Clean "progress vs looping" gradient: both sides in-language and
+            # length-matched within +-25%, so the dominant remaining difference
+            # is looping vs progress.
+            # Needs no chrF pivot, so it also fires on pivot-language questions
+            # that type 1 skips (no correct other-language answer).
+            pool_a = [i for i in chosen_candidates[lang][id]
+                      if question_scores[i]["rep"] < POOL_A_REP_MAX]
+            pool_b = [i for i in rejected_wrong_ans
+                      if question_scores[i]["rep"] > POOL_B_REP_MIN]
+            cand_pairs = [(a, b) for a in pool_a for b in pool_b if (a, b) not in emitted]
+            if cand_pairs:
+                def _len_mismatch(pair):
+                    la = len(candidate["candidates"][pair[0]])
+                    lb = len(candidate["candidates"][pair[1]])
+                    return abs(la - lb) / max(la, lb)
+                best = min(cand_pairs, key=_len_mismatch)
+                if _len_mismatch(best) <= ANTILOOP_LEN_TOL:
+                    emit_pair(best[0], best[1], "antiloop")
+                else:
+                    stats["antiloop_skipped_length_mismatch"] += 1
+
+            if emitted:
+                stats["question_lang_with_pairs"] += 1
     
     print("Finishing difficulty log...")
     # prompts with pairs
@@ -881,6 +1021,27 @@ def dataset_priorities(candidates, tokenizer, n_answers, dataset_file):
         # change to true if entry["num_id"] in ids_with_pairs
         if entry["num_id"] in ids_with_pairs:
             entry["pairs_generated"] = True
+
+    # rep summary + D4 census into stats (tracked in W&B via stats.json)
+    for lang in langs:
+        stats[f"rep_mean_{lang}"] = round(mean(rep_by_lang[lang]), 4) if rep_by_lang[lang] else None
+        stats[f"chosen_rep_mean_{lang}"] = round(mean(chosen_rep_by_lang[lang]), 4) if chosen_rep_by_lang[lang] else None
+    stats["pairs_over_cap_frac"] = (
+        round(stats["pairs_over_cap_any"] / stats["pairs_created"], 4)
+        if stats["pairs_created"] else None
+    )
+    print(f"pairs over the {TRAIN_MAX_LENGTH}-token training cap: "
+          f"{stats['pairs_over_cap_any']}/{stats['pairs_created']} "
+          f"(frac {stats['pairs_over_cap_frac']}; "
+          f"chosen side {stats['pairs_over_cap_chosen']}, "
+          f"rejected side {stats['pairs_over_cap_rejected']})")
+
+    stats["antiloop_census"] = census
+    print("D4 anti-loop census (eligible long clean chosen candidates):")
+    for lang in langs:
+        for tier, count in census[lang].items():
+            flag = "  <-- SHORTFALL (recorded, not fabricated)" if count < CENSUS_MIN_CELL else ""
+            print(f"  {lang}/{tier}: {count}{flag}")
 
     return dpo_pairs, stats, difficulty_log
  
