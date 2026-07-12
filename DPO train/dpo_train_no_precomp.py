@@ -11,7 +11,25 @@ os.environ["WANDB_CONFIG_DIR"] = "/tmp/wandb_config"
 os.makedirs("/tmp/hf_home", exist_ok=True)
 os.makedirs("/tmp/wandb_config", exist_ok=True)
 
-os.system("pip install datasets transformers unsloth trl bitsandbytes wandb")
+os.system("pip install datasets transformers unsloth trl bitsandbytes wandb liger-kernel")
+
+# The pip torch wheel (+cu13x) bundles its CUDA runtime under site-packages/nvidia/,
+# which is not on the dynamic loader's search path. torch resolves those libs via its
+# own rpath, but bitsandbytes' native library does not, so dlopen fails with
+# "libnvJitLink.so.13: cannot open shared object file". Preloading it with RTLD_GLOBAL
+# makes it visible to bitsandbytes. Must run before torch/unsloth are imported.
+import ctypes
+import glob
+import site
+import sysconfig
+
+_site_dirs = set(site.getsitepackages()) | {sysconfig.get_paths()["purelib"]}
+_preloaded = []
+for _dir in sorted(_site_dirs):
+    for _lib in sorted(glob.glob(os.path.join(_dir, "nvidia", "**", "libnvJitLink.so*"), recursive=True)):
+        ctypes.CDLL(_lib, mode=ctypes.RTLD_GLOBAL)
+        _preloaded.append(_lib)
+print(f"Preloaded nvJitLink libs: {_preloaded or 'NONE FOUND (bitsandbytes may fail)'}")
 
 import json
 import argparse
@@ -46,7 +64,7 @@ CONFIG = {
     "learning_rate":    1e-6,
     "num_epochs":       1,
     "batch_size":       1,
-    "grad_accum_steps": 64,
+    "grad_accum_steps": 32,
     "max_length":       16384,
     "max_pairs":        None,
     "cpu_test":         False,
@@ -170,7 +188,9 @@ def main(args):
         raise ValueError("No pairs loaded.")
     train_dataset = Dataset.from_list(pairs)
     ref_model = None
-    precompute_ref_log_probs = True
+    # Liger's chunked DPO loss does not support precomputed ref log-probs;
+    # the reference is computed per step by disabling the LoRA adapter.
+    precompute_ref_log_probs = False
     # ──────────────────────────────────────────────────────────────────────
 
     logger.info(f"Loaded {len(train_dataset)} preference pairs.")
@@ -219,8 +239,10 @@ def main(args):
         lr_scheduler_type="cosine",
         warmup_steps=24,
         beta=args.beta,
-        loss_type=["sigmoid", "sft"],   # DPO + NLL-on-chosen (Iterative RPO)
-        loss_weights=[1.0, 1.0],        # recommended alpha = 1.0
+        # Liger allows only a single loss_type; the NLL-on-chosen anchor (RPO)
+        # is re-enabled on the liger loss object after trainer construction.
+        loss_type="sigmoid",
+        use_liger_kernel=True,          # chunked loss: never materializes full-vocab logits
         max_length=max_length,
         truncation_mode="keep_end",
         precompute_ref_log_probs=precompute_ref_log_probs,
@@ -243,7 +265,6 @@ def main(args):
         save_steps=1,
         save_total_limit=2,
         max_grad_norm=2.0,
-        use_logits_to_keep=True,
     )
 
     trainer = DPOTrainer(
@@ -255,6 +276,22 @@ def main(args):
         callbacks=[GPUMemoryWatchdog(check_interval=1)]
     )
 
+    # TRL constructs LigerFusedLinearDPOLoss(beta=..., loss_type=...) with
+    # compute_nll_loss=False, dropping the RPO anchor. Liger natively supports
+    # loss = alpha * chosen_nll_loss + preference_loss, so rebuild it with the
+    # anchor on (equivalent to the previous loss_type=["sigmoid","sft"], [1,1]).
+    from liger_kernel.chunked_loss import LigerFusedLinearDPOLoss
+    if getattr(trainer, "liger_loss", None) is None:
+        raise RuntimeError("Expected trainer.liger_loss to exist (use_liger_kernel=True); "
+                           "TRL may have renamed the attribute — check before training without the anchor.")
+    trainer.liger_loss = LigerFusedLinearDPOLoss(
+        beta=args.beta,
+        loss_type="sigmoid",
+        compute_nll_loss=True,  # NLL on chosen = the anchored (RPO) term
+        alpha=1.0,
+    )
+    logger.info("Liger DPO loss rebuilt with compute_nll_loss=True, alpha=1.0 (anchored loss active)")
+
     checkpoint = get_latest_checkpoint(args.checkpoint_dir)
     if checkpoint:
         print(f"🔁 Resuming from {checkpoint}")
@@ -262,7 +299,7 @@ def main(args):
         print("🆕 Starting fresh training")
 
     logger.info("Starting DPO training...")
-    logger.info("(precompute_ref_log_probs=True: ref model runs once then is freed)")
+    logger.info("(liger kernel active; ref log-probs computed per step via adapter disable)")
     train_result = trainer.train(resume_from_checkpoint=checkpoint)
 
     trainer.log_metrics("train", train_result.metrics)
